@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Electiva1")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3b014d5b74571867f5953bfef63a9ba09ecd6365")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f3b29af629040009e1a2ea6d5f5c8b816170bf41")]
 [assembly: System.Reflection.AssemblyProductAttribute("Electiva1")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Electiva1")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
