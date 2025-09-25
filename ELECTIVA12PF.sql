@@ -1,0 +1,2 @@
+CREATE DATABASE SistemaVentasPF1;
+go
