@@ -1,3 +1,5 @@
+/**
+
 CREATE TABLE Productos (
     IdProducto INT PRIMARY KEY,
     Nombre NVARCHAR(100) NOT NULL,
@@ -37,3 +39,4 @@ CREATE TABLE FuentesDatos (
     TipoFuente NVARCHAR(50) NOT NULL,
     FechaCarga DATETIME DEFAULT GETDATE()
 );
+**/

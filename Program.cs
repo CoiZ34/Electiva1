@@ -4,16 +4,14 @@ class Program
 {
     static void Main(string[] args)
     {
-        Console.WriteLine("Inicializando ETL de Hansel!");
+        Console.WriteLine("Comienza mi ETL Hansel P");
+    ETL etl = new ETL();
 
-        ETL etl = new ETL();
+        etl.LoadCustomers("Datos/customers.csv");
+etl.LoadProducts("Datos/products.csv");
+etl.LoadOrders("Datos/orders.csv");
+etl.LoadOrderDetails("Datos/order_details.csv");
 
-        etl.CargarProductos("productos.csv");
-
-        etl.CargarClientes("clientes.csv");
-        
-        etl.CargarFacturasYVentas("ventas.csv");
-
-        Console.WriteLine("Proceso ETL realizado con exito.");
+        Console.WriteLine("Se termino el ETL con exito.");
     }
 }

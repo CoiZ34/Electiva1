@@ -1,134 +1,190 @@
 using System;
-using Microsoft.Data.SqlClient;
+using System.Globalization;
 using System.IO;
-
+using Microsoft.Data.SqlClient;
 
 public class ETL
 {
-   
-    public void CargarProductos(string archivo)
+
+    private string Clean(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    private bool IsHeader(string line, string startsWith) =>
+        !string.IsNullOrWhiteSpace(line) && line.StartsWith(startsWith, StringComparison.OrdinalIgnoreCase);
+
+    private DateTime? ParseDate(string s)
     {
-        foreach (var linea in File.ReadAllLines(archivo))
-        {
-            if (string.IsNullOrWhiteSpace(linea) || linea.StartsWith("Id")) continue;
-
-            var datos = linea.Split(',');
-        Producto p = new Producto
-            {
-            IdProducto = int.Parse(datos[0]),
-                Nombre = datos[1],
-                Precio = decimal.Parse(datos[2]),
-                Categoria = datos[3]
-            };
-
-            using (SqlConnection conn = Conexion.ObtenerConexion())
-            {
-             conn.Open();
-             string sql = "INSERT INTO Productos (IdProducto, Nombre, Precio, Categoria) VALUES (@id,@nombre,@precio,@categoria)";
-             SqlCommand cmd = new SqlCommand(sql, conn);
-             cmd.Parameters.AddWithValue("@id", p.IdProducto);
-                cmd.Parameters.AddWithValue("@nombre", p.Nombre);
-                cmd.Parameters.AddWithValue("@precio", p.Precio);
-                cmd.Parameters.AddWithValue("@categoria", p.Categoria);
-                cmd.ExecuteNonQuery();
-            }
-        }
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        if (DateTime.TryParse(s, out var dt)) return dt.Date;
+        if (double.TryParse(s, out var serial)) return DateTime.FromOADate(serial).Date;
+        return null;
     }
 
-  
-    public void CargarClientes(string archivo)
+    private bool ParseDec(string s, out decimal v)
     {
-        foreach (var linea in File.ReadAllLines(archivo))
-        {
-            if (string.IsNullOrWhiteSpace(linea) || linea.StartsWith("Id")) continue;
+        if (decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out v)) return true;
+        return decimal.TryParse(s, out v);
+    }
 
-            var datos = linea.Split(',');
-            Cliente c = new Cliente
-            {
-                IdCliente = int.Parse(datos[0]),
-                Nombre = datos[1],
-                Email = datos[2],
-                Telefono = datos[3]
-            };
+
+    public void LoadCustomers(string file)
+    {
+        foreach (var line in File.ReadLines(file))
+        {
+            if (string.IsNullOrWhiteSpace(line) || IsHeader(line, "CustomerID")) continue;
+
+            var d = line.Split(',');
+            if (d.Length < 6) continue;
+
+            if (!int.TryParse(d[0].Trim(), out int id)) continue;
+            string first   = Clean(d[1]);
+            string last    = Clean(d[2]);
+            string email   = Clean(d[3]);
+            string city    = Clean(d[4]);
+            string country = Clean(d[5]);
+            if (first == null || last == null) continue;
 
             using (SqlConnection conn = Conexion.ObtenerConexion())
             {
                 conn.Open();
-                string sql = "INSERT INTO Clientes (IdCliente, Nombre, Email, Telefono) VALUES (@id,@nombre,@correo,@telefono)";
+                string sql = "IF NOT EXISTS (SELECT 1 FROM Customers WHERE CustomerID=@id) " +
+                             "INSERT INTO Customers (CustomerID, FirstName, LastName, Email, City, Country) " +
+                             "VALUES (@id, @f, @l, @e, @c, @co)";
                 SqlCommand cmd = new SqlCommand(sql, conn);
-
-                cmd.Parameters.AddWithValue("@id", c.IdCliente);
-
-                cmd.Parameters.AddWithValue("@nombre", c.Nombre);
-
-                cmd.Parameters.AddWithValue("@correo", c.Email);
-
-                cmd.Parameters.AddWithValue("@telefono", c.Telefono);
-                
+                cmd.Parameters.AddWithValue("@id", id);
+                cmd.Parameters.AddWithValue("@f", first);
+                cmd.Parameters.AddWithValue("@l", last);
+                cmd.Parameters.AddWithValue("@e", (object?)email ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@c", (object?)city ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@co", (object?)country ?? DBNull.Value);
                 cmd.ExecuteNonQuery();
             }
         }
     }
 
-    public void CargarFacturasYVentas(string archivo)
+
+    public void LoadProducts(string file)
     {
-        foreach (var linea in File.ReadAllLines(archivo))
+        foreach (var line in File.ReadLines(file))
         {
-            if (string.IsNullOrWhiteSpace(linea) || linea.StartsWith("Id")) continue;
+            if (string.IsNullOrWhiteSpace(line) || IsHeader(line, "ProductID")) continue;
 
-            var datos = linea.Split(',');
-            Factura f = new Factura
-            {
-                IdFactura = int.Parse(datos[0]),
-                NumeroFactura = datos[1],
-                Fecha = DateTime.Parse(datos[2]),
-                IdCliente = int.Parse(datos[3])
-            };
+            var d = line.Split(',');
+            if (d.Length < 4) continue;
 
-            Venta v = new Venta
-            {
-                IdVenta = int.Parse(datos[4]),
-                IdFactura = f.IdFactura,
-                IdProducto = int.Parse(datos[5]),
-                Cantidad = int.Parse(datos[6]),
-                Precio = decimal.Parse(datos[7])
-            };
+            if (!int.TryParse(d[0].Trim(), out int id)) continue;
+            string name = Clean(d[1]);
+            string category = Clean(d[2]);
+            if (!ParseDec(Clean(d[3]) ?? "", out decimal price)) continue;
+            if (name == null || price < 0) continue;
 
             using (SqlConnection conn = Conexion.ObtenerConexion())
             {
                 conn.Open();
+                string sql = "IF NOT EXISTS (SELECT 1 FROM Products WHERE ProductID=@id) " +
+                             "INSERT INTO Products (ProductID, ProductName, Category, Price) " +
+                             "VALUES (@id, @n, @c, @p)";
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@id", id);
+                cmd.Parameters.AddWithValue("@n", name);
+                cmd.Parameters.AddWithValue("@c", (object?)category ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@p", price);
+                cmd.ExecuteNonQuery();
+            }
+        }
+    }
 
 
-                string sqlFactura = "IF NOT EXISTS (SELECT 1 FROM Facturas WHERE IdFactura=@idFactura) " +
-                                    "INSERT INTO Facturas (IdFactura, NumeroFactura, Fecha, IdCliente) VALUES (@idFactura,@num,@fecha,@idCliente)";
-                SqlCommand cmdFactura = new SqlCommand(sqlFactura, conn);
+    public void LoadOrders(string file)
+    {
+        using var lookup = Conexion.ObtenerConexion();
+        lookup.Open();
 
-                cmdFactura.Parameters.AddWithValue("@idFactura", f.IdFactura);
+        foreach (var line in File.ReadLines(file))
+        {
+            if (string.IsNullOrWhiteSpace(line) || IsHeader(line, "OrderID")) continue;
 
-                cmdFactura.Parameters.AddWithValue("@num", f.NumeroFactura);
+            var d = line.Split(',');
+            if (d.Length < 4) continue;
 
-                cmdFactura.Parameters.AddWithValue("@fecha", f.Fecha);
+            if (!int.TryParse(d[0].Trim(), out int orderId)) continue;
+            if (!int.TryParse(d[1].Trim(), out int customerId)) continue;
+            var orderDate = ParseDate(Clean(d[2]) ?? "");
+            string status = Clean(d[3]);
+            if (orderDate == null) continue;
 
-                cmdFactura.Parameters.AddWithValue("@idCliente", f.IdCliente);
 
-                cmdFactura.ExecuteNonQuery();
+            using (var chk = new SqlCommand("SELECT COUNT(1) FROM Customers WHERE CustomerID=@c", lookup))
+            {
+                chk.Parameters.AddWithValue("@c", customerId);
+                if ((int)chk.ExecuteScalar() == 0) continue;
+            }
 
-              
-                string sqlVenta = "INSERT INTO Ventas (IdVenta, IdFactura, IdProducto, Cantidad, Precio) " +
-            "VALUES (@idVenta,@idFactura,@idProducto,@cantidad,@precio)";
-                SqlCommand cmdVenta = new SqlCommand(sqlVenta, conn);
+            using (SqlConnection conn = Conexion.ObtenerConexion())
+            {
+                conn.Open();
+                string sql = "IF NOT EXISTS (SELECT 1 FROM Orders WHERE OrderID=@id) " +
+                             "INSERT INTO Orders (OrderID, CustomerID, OrderDate, Status) " +
+                             "VALUES (@id, @cid, @dt, @st)";
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@id", orderId);
+                cmd.Parameters.AddWithValue("@cid", customerId);
+                cmd.Parameters.AddWithValue("@dt", orderDate.Value);
+                cmd.Parameters.AddWithValue("@st", (object?)status ?? DBNull.Value);
+                cmd.ExecuteNonQuery();
+            }
+        }
+    }
 
-                cmdVenta.Parameters.AddWithValue("@idVenta", v.IdVenta);
 
-                cmdVenta.Parameters.AddWithValue("@idFactura", v.IdFactura);
+    public void LoadOrderDetails(string file)
+    {
+        using var lookup = Conexion.ObtenerConexion();
+        lookup.Open();
 
-                cmdVenta.Parameters.AddWithValue("@idProducto", v.IdProducto);
+        foreach (var line in File.ReadLines(file))
+        {
+            if (string.IsNullOrWhiteSpace(line) || IsHeader(line, "OrderID")) continue;
 
-                cmdVenta.Parameters.AddWithValue("@cantidad", v.Cantidad);
+            var d = line.Split(',');
+            if (d.Length < 4) continue;
 
-                cmdVenta.Parameters.AddWithValue("@precio", v.Precio);
+            if (!int.TryParse(d[0].Trim(), out int orderId)) continue;
+            if (!int.TryParse(d[1].Trim(), out int productId)) continue;
+            if (!int.TryParse(d[2].Trim(), out int qty) || qty <= 0) continue;
 
-                cmdVenta.ExecuteNonQuery();
+            decimal unitPrice = 0m, totalPrice = 0m;
+            bool hasUnit  = ParseDec(Clean(d[3]) ?? "", out unitPrice);
+            bool hasTotal = d.Length >= 5 && ParseDec(Clean(d[4]) ?? "", out totalPrice);
+
+            if (!hasTotal && hasUnit) totalPrice = unitPrice * qty;
+            if (!hasUnit  && hasTotal) unitPrice  = qty == 0 ? 0 : totalPrice / qty;
+            if (!hasUnit && !hasTotal) continue;
+            if (totalPrice < 0) continue;
+
+
+            using (var c1 = new SqlCommand("SELECT COUNT(1) FROM Orders WHERE OrderID=@o", lookup))
+            {
+                c1.Parameters.AddWithValue("@o", orderId);
+                if ((int)c1.ExecuteScalar() == 0) continue;
+            }
+            using (var c2 = new SqlCommand("SELECT COUNT(1) FROM Products WHERE ProductID=@p", lookup))
+            {
+                c2.Parameters.AddWithValue("@p", productId);
+                if ((int)c2.ExecuteScalar() == 0) continue;
+            }
+
+            using (SqlConnection conn = Conexion.ObtenerConexion())
+            {
+                conn.Open();
+                string sql = "IF NOT EXISTS (SELECT 1 FROM OrderDetails WHERE OrderID=@o AND ProductID=@p) " +
+                             "INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice, TotalPrice) " +
+                             "VALUES (@o, @p, @q, @u, @t)";
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@o", orderId);
+                cmd.Parameters.AddWithValue("@p", productId);
+                cmd.Parameters.AddWithValue("@q", qty);
+                cmd.Parameters.AddWithValue("@u", unitPrice);
+                cmd.Parameters.AddWithValue("@t", totalPrice);
+                cmd.ExecuteNonQuery();
             }
         }
     }
